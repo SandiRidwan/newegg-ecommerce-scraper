@@ -28,18 +28,16 @@ class NeweggScraper:
             self.driver.get(url)
 
             try:
-                # Tunggu kontainer produk muncul
                 WebDriverWait(self.driver, 15).until(
                     EC.presence_of_all_elements_located((By.CLASS_NAME, "item-container"))
                 )
                 
-                # OPTIMASI: Scroll lebih lambat agar JavaScript merender deskripsi & gambar
                 total_height = int(self.driver.execute_script("return document.body.scrollHeight"))
                 for i in range(1, total_height, 800):
                     self.driver.execute_script(f"window.scrollTo(0, {i});")
                     time.sleep(0.3)
                 
-                time.sleep(2) # Buffer tambahan setelah scroll selesai
+                time.sleep(2) 
 
                 items = self.driver.find_elements(By.CLASS_NAME, "item-container")
 
@@ -50,30 +48,24 @@ class NeweggScraper:
                         if not name or name in self.seen_names:
                             continue
                         
-                        # Ekstraksi Harga
                         try:
                             price = item.find_element(By.CLASS_NAME, "price-current").text.replace('\n', '').strip()
                         except:
                             price = "Price not listed"
 
-                        # Ekstraksi Gambar
                         try:
                             image_url = item.find_element(By.TAG_NAME, "img").get_attribute("src")
                         except:
                             image_url = "N/A"
 
-                        # --- PERBAIKAN DESKRIPSI (Fallback Mechanism) ---
                         description = "N/A"
-                        # Coba selector 1: Bullet points (umum di list view)
                         bullets = item.find_elements(By.CLASS_NAME, "item-bullet-points")
-                        # Coba selector 2: Features (umum di grid view)
                         features = item.find_elements(By.CLASS_NAME, "item-features")
                         
                         if bullets and bullets[0].text.strip():
                             description = bullets[0].text.replace('\n', ' | ')
                         elif features and features[0].text.strip():
                             description = features[0].text.replace('\n', ' | ')
-                        # ------------------------------------------------
 
                         self.results.append({
                             "Product Name": name,
@@ -94,18 +86,32 @@ class NeweggScraper:
                 print(f"[!] Timeout or Error on page {page}")
                 break
 
-    def export_data(self, filename="newegg_output"):
+    # --- BAGIAN YANG DIUPDATE ---
+    def export_data(self, filename="newegg_results"):
         if not self.results:
             print("[!] No data to save.")
             return
 
         df = pd.DataFrame(self.results)
-        df.to_csv(f"{filename}.csv", index=False)
         
+        # 1. Simpan CSV dengan separator ';' dan encoding sig agar rapi di Excel Indonesia
+        csv_file = f"{filename}.csv"
+        df.to_csv(csv_file, index=False, sep=';', encoding='utf-8-sig')
+        
+        # 2. Simpan sebagai file Excel asli (.xlsx) - Format terbaik untuk klien
+        try:
+            xlsx_file = f"{filename}.xlsx"
+            df.to_excel(xlsx_file, index=False)
+            print(f"[+] Excel file (.xlsx) created successfully!")
+        except ImportError:
+            print("[!] Note: Install 'openpyxl' to enable direct .xlsx export.")
+
+        # 3. Tetap simpan JSON untuk kebutuhan developer
         with open(f"{filename}.json", 'w', encoding='utf-8') as f:
             json.dump(self.results, f, indent=4)
             
-        print(f"[+] Done! Saved {len(self.results)} unique products to CSV and JSON.")
+        print(f"[+] Done! Saved {len(self.results)} products to CSV, XLSX, and JSON.")
+    # ----------------------------
 
     def quit(self):
         self.driver.quit()
@@ -113,7 +119,6 @@ class NeweggScraper:
 if __name__ == "__main__":
     scraper = NeweggScraper()
     try:
-        # Contoh penggunaan: mencari "Monitor" sebanyak 1 halaman
         scraper.scrape_category("Monitor", max_pages=1)
         scraper.export_data()
     finally:
